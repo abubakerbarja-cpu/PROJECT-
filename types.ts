@@ -60,4 +60,4 @@ export interface Lesson {
   color: string;
 }
 
-export type Screen = 'HOME' | 'MODE_SELECT' | 'CONFIG' | 'SETUP' | 'WHEEL' | 'PLAY' | 'LEARN' | 'LEADERBOARD' | 'RULES' | 'ABOUT';
+export type Screen = 'HOME' | 'MODE_SELECT' | 'CONFIG' | 'SETUP' | 'WHEEL' | 'PLAY' | 'LEARN' | 'LEADERBOARD' | 'RULES' | 'ABOUT' | 'ADMIN';

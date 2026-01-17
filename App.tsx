@@ -1,10 +1,16 @@
 
-import React, { useState } from 'react';
-import { Screen, GameMode, Player, Category, Difficulty, HelperState } from './types';
+import React, { useState, useEffect } from 'react';
+import { Screen, GameMode, Player, Category, Difficulty, HelperState, Question } from './types';
 import Navbar from './components/Navbar';
 import Landing from './components/Landing';
 import GameEngine from './components/GameEngine';
 import Academy from './components/Academy';
+import AdminPanel from './components/AdminPanel';
+import { QUESTIONS as STATIC_QUESTIONS } from './constants';
+import { db, isFirestoreAvailable } from './firebase';
+import { collection, onSnapshot, addDoc, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
+
+const ADMIN_PASSWORD = '2025'; // كلمة المرور الافتراضية
 
 const DEFAULT_HELPERS: HelperState = {
   deleteTwo: 1,
@@ -54,6 +60,8 @@ const CATEGORY_THEMES: Record<Category, { icon: string, label: string, desc: str
 
 const App: React.FC = () => {
   const [screen, setScreen] = useState<Screen>('HOME');
+  const [questions, setQuestions] = useState<Question[]>(STATIC_QUESTIONS);
+  const [leaderboard, setLeaderboard] = useState<{name: string, score: number, avatar: string}[]>([]);
   const [gameMode, setGameMode] = useState<GameMode>(GameMode.ONE_VS_ONE);
   const [players, setPlayers] = useState<Player[]>([
     { id: '1', name: 'البطل 1', score: 0, color: '#fbbf24', avatar: '🦁', helpers: { ...DEFAULT_HELPERS } },
@@ -63,6 +71,79 @@ const App: React.FC = () => {
     categories: [] as Category[],
     level: Difficulty.MEDIUM
   });
+
+  // Admin Auth State
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [passInput, setPassInput] = useState('');
+  const [authError, setAuthError] = useState(false);
+
+  // Fetch Questions from Firestore safely
+  useEffect(() => {
+    if (!isFirestoreAvailable || !db) {
+      console.log("Using static local questions.");
+      return;
+    }
+
+    try {
+      const unsub = onSnapshot(collection(db, 'questions'), (snapshot) => {
+        const qData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Question));
+        if (qData.length > 0) {
+          setQuestions(qData);
+        }
+      }, (error) => {
+        console.warn("Firestore onSnapshot error (Questions):", error);
+      });
+      return unsub;
+    } catch (e) {
+      console.error("Failed to setup question listener:", e);
+    }
+  }, []);
+
+  // Fetch Leaderboard from Firestore safely
+  useEffect(() => {
+    if (!isFirestoreAvailable || !db) return;
+
+    try {
+      const q = query(collection(db, 'leaderboard'), orderBy('score', 'desc'), limit(10));
+      const unsub = onSnapshot(q, (snapshot) => {
+        setLeaderboard(snapshot.docs.map(doc => doc.data() as any));
+      }, (error) => {
+        console.warn("Firestore onSnapshot error (Leaderboard):", error);
+      });
+      return unsub;
+    } catch (e) {
+      console.error("Failed to setup leaderboard listener:", e);
+    }
+  }, []);
+
+  const saveScoreToFirestore = async (finalPlayers: Player[]) => {
+    if (!isFirestoreAvailable || !db) return;
+
+    try {
+      for (const p of finalPlayers) {
+        if (p.score > 0) {
+          await addDoc(collection(db, 'leaderboard'), {
+            name: p.name,
+            score: p.score,
+            avatar: p.avatar,
+            timestamp: serverTimestamp()
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Failed to save score:", e);
+    }
+  };
+
+  const handleAdminLogin = () => {
+    if (passInput === ADMIN_PASSWORD) {
+      setIsAdminAuthenticated(true);
+      setAuthError(false);
+    } else {
+      setAuthError(true);
+      setPassInput('');
+    }
+  };
 
   const handleStartGame = () => {
     setScreen('MODE_SELECT');
@@ -221,7 +302,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-center mt-12">
+            <div className="flex flex-col gap-4 items-center mt-12">
               <button
                 onClick={() => setScreen('SETUP')}
                 disabled={gameSettings.categories.length === 0}
@@ -272,8 +353,10 @@ const App: React.FC = () => {
           <GameEngine 
             players={players} 
             settings={gameSettings} 
+            questions={questions}
             onGameOver={(finalPlayers) => {
                setPlayers(finalPlayers);
+               saveScoreToFirestore(finalPlayers);
                setScreen('LEADERBOARD');
             }}
           />
@@ -281,14 +364,55 @@ const App: React.FC = () => {
       
       case 'LEARN':
         return <Academy />;
+
+      case 'ABOUT':
+        return (
+          <div className="max-w-4xl mx-auto py-12 px-8 bg-slate-800 rounded-[3rem] border border-slate-700 shadow-2xl animate-in fade-in zoom-in duration-700 text-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400"></div>
+            <div className="relative mb-8 pt-6">
+              <div className="absolute -inset-4 bg-amber-500/10 blur-3xl rounded-full"></div>
+              <h1 className="text-6xl md:text-7xl font-title text-amber-400 drop-shadow-2xl relative mb-4">اِمْرَح وَارْبَح</h1>
+              <div className="flex items-center justify-center gap-3 text-xl md:text-2xl text-slate-300 font-black tracking-widest opacity-80">
+                <span>نلعب</span>
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                <span>نتعلّم</span>
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                <span>نرتقي</span>
+              </div>
+            </div>
+            <div className="max-w-2xl mx-auto space-y-8 text-right">
+              <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-700/50">
+                <p className="text-2xl md:text-3xl text-slate-200 leading-relaxed font-bold text-center">اِمْرَح وَارْبَح هي رحلة تعليمية وتنافسية فريدة، صُممت خصيصاً لتجمع بين التسلية وبناء المعرفة لدى الأطفال والناشئة.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-slate-700/30 p-8 rounded-3xl border border-slate-600 hover:border-amber-500/50 transition-all text-center group">
+                  <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🎯</div>
+                  <h4 className="text-xl font-black text-amber-400 mb-2">هدفنا</h4>
+                  <p className="text-slate-400 font-bold">غرس القيم الإسلامية ومعرفة السيرة النبوية بأسلوب عصري ومحبب.</p>
+                </div>
+                <div className="bg-slate-700/30 p-8 rounded-3xl border border-slate-600 hover:border-amber-500/50 transition-all text-center group">
+                  <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🎡</div>
+                  <h4 className="text-xl font-black text-amber-400 mb-2">أسلوبنا</h4>
+                  <p className="text-slate-400 font-bold">التفاعل، الحماس، وعجلة الحظ التي تجعل من كل سؤال تحدياً جديداً.</p>
+                </div>
+              </div>
+              <p className="text-slate-400 text-lg font-bold leading-relaxed border-t border-slate-700 pt-8">تناسب اللعبة الأطفال من عمر 7 إلى 13 سنة، وتقدم محتوىً ثرياً يغطي الجوانب الدينية والثقافية والرياضية والألغاز، مما ينمي مهارات التفكير والتركيز لدى أبطالنا الصغار.</p>
+            </div>
+            <div className="mt-12 flex justify-center gap-4">
+               <button onClick={() => setScreen('HOME')} className="px-12 py-4 bg-slate-700 text-white rounded-2xl font-black hover:bg-slate-600 transition-all">الرئيسية</button>
+               <button onClick={() => setScreen('MODE_SELECT')} className="px-12 py-4 bg-amber-500 text-slate-900 rounded-2xl font-black shadow-lg hover:scale-105 transition-all">ابدأ اللعب ▶</button>
+               <button onClick={() => setScreen('ADMIN')} className="hidden lg:block px-12 py-4 bg-slate-900 border border-slate-700 text-white rounded-2xl font-black hover:bg-slate-800 transition-all">الإدارة 🛡️</button>
+            </div>
+          </div>
+        );
       
       case 'LEADERBOARD':
         return (
           <div className="max-w-2xl mx-auto py-10 px-6 text-center">
-            <h2 className="text-5xl font-black mb-10 text-amber-400">لوحة الشرف 🏆</h2>
-            <div className="space-y-4">
-              {[...players].sort((a, b) => b.score - a.score).map((p, idx) => (
-                <div key={p.id} className={`p-6 rounded-3xl flex items-center justify-between ${idx === 0 ? 'bg-amber-500/20 border-2 border-amber-500' : 'bg-slate-800 border border-slate-700'}`}>
+            <h2 className="text-5xl font-black mb-10 text-amber-400">لوحة الشرف العالمية 🌍</h2>
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto no-scrollbar pb-4">
+              {leaderboard.map((p, idx) => (
+                <div key={idx} className={`p-6 rounded-3xl flex items-center justify-between animate-in slide-in-from-right duration-300 ${idx === 0 ? 'bg-amber-500/20 border-2 border-amber-500 scale-105' : 'bg-slate-800 border border-slate-700'}`}>
                   <div className="flex items-center gap-4">
                     <span className="text-4xl font-black text-slate-500 w-10">{idx + 1}</span>
                     <span className="text-4xl">{p.avatar}</span>
@@ -297,16 +421,21 @@ const App: React.FC = () => {
                   <span className="text-3xl font-black text-amber-400">{p.score} ⭐</span>
                 </div>
               ))}
+              {leaderboard.length === 0 && <p className="text-slate-500">لا يوجد متصدرين بعد، كن الأول!</p>}
             </div>
-            <button
-              onClick={() => setScreen('HOME')}
-              className="mt-12 bg-slate-800 hover:bg-slate-700 text-white px-10 py-4 rounded-2xl font-bold transition-all"
-            >
-              العودة للرئيسية 🏠
-            </button>
+            <div className="flex flex-col md:flex-row gap-4 justify-center mt-12">
+              <button
+                onClick={() => setScreen('HOME')}
+                className="bg-slate-800 hover:bg-slate-700 text-white px-10 py-4 rounded-2xl font-bold transition-all"
+              >العودة للرئيسية 🏠</button>
+              <button
+                onClick={() => setScreen('ADMIN')}
+                className="bg-amber-500 text-slate-900 px-10 py-4 rounded-2xl font-black transition-all"
+              >لوحة التحكم الإدارية 🛠️</button>
+            </div>
           </div>
         );
-      
+
       case 'RULES':
         return (
           <div className="max-w-3xl mx-auto py-10 px-6 bg-slate-800 rounded-3xl border border-slate-700 animate-in zoom-in duration-500">
@@ -338,53 +467,58 @@ const App: React.FC = () => {
           </div>
         );
 
-      case 'ABOUT':
+      case 'ADMIN':
+        if (!isAdminAuthenticated) {
+          return (
+            <div className="max-w-md mx-auto py-20 px-8 bg-slate-800 rounded-[2.5rem] border border-slate-700 shadow-2xl animate-in fade-in zoom-in duration-500 text-center">
+              <div className="text-5xl mb-6">🔐</div>
+              <h2 className="text-3xl font-black text-white mb-4">دخول الإدارة</h2>
+              <p className="text-slate-400 mb-8 font-bold text-sm">يرجى إدخال كلمة المرور للوصول إلى الإعدادات</p>
+              <div className="space-y-4">
+                <input 
+                  type="password"
+                  value={passInput}
+                  onChange={(e) => {
+                    setPassInput(e.target.value);
+                    setAuthError(false);
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()}
+                  placeholder="كلمة المرور..."
+                  className={`w-full p-4 bg-slate-900 rounded-2xl border-2 outline-none text-center text-xl font-black text-white transition-all ${authError ? 'border-red-500 animate-shake' : 'border-slate-700 focus:border-amber-500'}`}
+                />
+                {authError && <p className="text-red-500 text-sm font-bold">كلمة المرور غير صحيحة! ❌</p>}
+                <button 
+                  onClick={handleAdminLogin}
+                  className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-black py-4 rounded-2xl text-lg shadow-lg transition-all active:scale-95"
+                >
+                  دخول
+                </button>
+                <button 
+                  onClick={() => setScreen('HOME')}
+                  className="w-full bg-transparent text-slate-500 hover:text-white font-bold py-2 text-sm"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          );
+        }
         return (
-          <div className="max-w-4xl mx-auto py-12 px-8 bg-slate-800 rounded-[3rem] border border-slate-700 shadow-2xl animate-in fade-in zoom-in duration-700 text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400"></div>
-            
-            <div className="relative mb-8 pt-6">
-              <div className="absolute -inset-4 bg-amber-500/10 blur-3xl rounded-full"></div>
-              <h1 className="text-6xl md:text-7xl font-title text-amber-400 drop-shadow-2xl relative mb-4">
-                اِمْرَح وَارْبَح
-              </h1>
-              <div className="flex items-center justify-center gap-3 text-xl md:text-2xl text-slate-300 font-black tracking-widest opacity-80">
-                <span>نلعب</span>
-                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                <span>نتعلّم</span>
-                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                <span>نرتقي</span>
-              </div>
-            </div>
-
-            <div className="max-w-2xl mx-auto space-y-8 text-right">
-              <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-700/50">
-                <p className="text-2xl md:text-3xl text-slate-200 leading-relaxed font-bold text-center">
-                  اِمْرَح وَارْبَح هي رحلة تعليمية وتنافسية فريدة، صُممت خصيصاً لتجمع بين التسلية وبناء المعرفة لدى الأطفال والناشئة.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-slate-700/30 p-8 rounded-3xl border border-slate-600 hover:border-amber-500/50 transition-all text-center group">
-                  <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🎯</div>
-                  <h4 className="text-xl font-black text-amber-400 mb-2">هدفنا</h4>
-                  <p className="text-slate-400 font-bold">غرس القيم الإسلامية ومعرفة السيرة النبوية بأسلوب عصري ومحبب.</p>
-                </div>
-                <div className="bg-slate-700/30 p-8 rounded-3xl border border-slate-600 hover:border-amber-500/50 transition-all text-center group">
-                  <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🎡</div>
-                  <h4 className="text-xl font-black text-amber-400 mb-2">أسلوبنا</h4>
-                  <p className="text-slate-400 font-bold">التفاعل، الحماس، وعجلة الحظ التي تجعل من كل سؤال تحدياً جديداً.</p>
-                </div>
-              </div>
-
-              <p className="text-slate-400 text-lg font-bold leading-relaxed border-t border-slate-700 pt-8">
-                تناسب اللعبة الأطفال من عمر 7 إلى 13 سنة، وتقدم محتوىً ثرياً يغطي الجوانب الدينية والثقافية والرياضية والألغاز، مما ينمي مهارات التفكير والتركيز لدى أبطالنا الصغار.
-              </p>
-            </div>
-
-            <div className="mt-12 flex justify-center gap-4">
-               <button onClick={() => setScreen('HOME')} className="px-12 py-4 bg-slate-700 text-white rounded-2xl font-black hover:bg-slate-600 transition-all">الرئيسية</button>
-               <button onClick={() => setScreen('MODE_SELECT')} className="px-12 py-4 bg-amber-500 text-slate-900 rounded-2xl font-black shadow-lg hover:scale-105 transition-all">ابدأ اللعب ▶</button>
+          <div className="py-10 animate-in fade-in duration-500">
+            <AdminPanel questions={questions} />
+            <div className="mt-8 text-center flex flex-col gap-4 items-center">
+              <button 
+                onClick={() => setIsAdminAuthenticated(false)} 
+                className="text-amber-500 hover:text-amber-400 font-bold flex items-center gap-2"
+              >
+                <span>🔒 تسجيل الخروج من الإدارة</span>
+              </button>
+              <button 
+                onClick={() => setScreen('HOME')} 
+                className="text-slate-500 hover:text-white font-bold underline text-sm"
+              >
+                العودة للرئيسية
+              </button>
             </div>
           </div>
         );

@@ -14,7 +14,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentScreen, setScreen }) => {
     { id: 'LEARN', label: 'تعلّم', icon: '📘' },
     { id: 'LEADERBOARD', label: 'لوحة الشرف', icon: '🏆' },
     { id: 'RULES', label: 'كيف نلعب؟', icon: '🎡' },
-    { id: 'ABOUT', label: 'شرح اللعب', icon: '📝' }
+    { id: 'ADMIN', label: 'الإدارة', icon: '🔐' }
   ];
 
   return (
@@ -37,7 +37,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentScreen, setScreen }) => {
       </div>
 
       {/* Navigation Menu (Centered/End) */}
-      <div className="flex items-center gap-1.5 md:gap-4 overflow-x-auto no-scrollbar max-w-[65vw] py-1">
+      <div className="flex items-center gap-1.5 md:gap-4 overflow-x-auto no-scrollbar max-w-[75vw] py-1">
         {menuItems.map((item) => (
           <button
             key={item.id}
@@ -45,7 +45,9 @@ const Navbar: React.FC<NavbarProps> = ({ currentScreen, setScreen }) => {
             className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all whitespace-nowrap group ${
               currentScreen === item.id 
                 ? 'bg-amber-500 text-slate-900 shadow-lg font-black' 
-                : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
+                : item.id === 'ADMIN' 
+                  ? 'text-rose-400 hover:bg-rose-500/10' 
+                  : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
             }`}
           >
             <span className={`text-lg transition-transform group-hover:scale-125 ${currentScreen === item.id ? '' : 'grayscale group-hover:grayscale-0'}`}>
@@ -56,7 +58,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentScreen, setScreen }) => {
         ))}
       </div>
 
-      {/* Invisible Spacer for Balance on Mobile if needed, or just let it be flex */}
+      {/* Invisible Spacer for Balance */}
       <div className="w-10 h-10 hidden lg:block opacity-0"></div>
     </nav>
   );

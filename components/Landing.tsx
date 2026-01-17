@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { GoogleGenAI } from "@google/genai";
 
@@ -10,9 +9,11 @@ interface LandingProps {
 const Landing: React.FC<LandingProps> = ({ onStart, onLearn }) => {
   const [iconUrl, setIconUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string>("");
 
   const generateGameIcon = async () => {
     setIsGenerating(true);
+    setStatusMessage("جاري ابتكار الأيقونة...");
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const prompt = "A vibrant 3D app icon for a children's quiz game called 'اِمْرَح وَارْبَح' (which means Have Fun and Win). The icon features a cute, friendly lion character wearing a golden crown, triumphantly holding a golden trophy in one hand and a colorful book in the other. Behind the lion is a stylized prize wheel with segments in gold, emerald green, and bright red. The background is a deep navy blue with sparkling stars. The style is high-quality 3D digital art, playful, vibrant, and appealing to kids.";
@@ -29,18 +30,26 @@ const Landing: React.FC<LandingProps> = ({ onStart, onLearn }) => {
         }
       });
 
+      let base64Data = "";
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
-          const base64Data = part.inlineData.data;
-          setIconUrl(`data:image/png;base64,${base64Data}`);
+          base64Data = part.inlineData.data;
           break;
         }
       }
+
+      if (base64Data) {
+        const localUrl = `data:image/png;base64,${base64Data}`;
+        setIconUrl(localUrl);
+        setStatusMessage("تم التوليد بنجاح! ✨");
+      }
     } catch (error) {
       console.error("Error generating icon:", error);
-      alert("عذراً، حدث خطأ أثناء توليد الأيقونة. حاول مرة أخرى!");
+      alert("عذراً، حدث خطأ أثناء توليد الأيقونة.");
+      setStatusMessage("فشل التوليد ❌");
     } finally {
       setIsGenerating(false);
+      setTimeout(() => setStatusMessage(""), 3000);
     }
   };
 
@@ -104,14 +113,19 @@ const Landing: React.FC<LandingProps> = ({ onStart, onLearn }) => {
         <button
           onClick={generateGameIcon}
           disabled={isGenerating}
-          className="group relative flex items-center gap-3 px-6 py-3 bg-slate-800/50 hover:bg-slate-700 border border-slate-700 rounded-full text-slate-300 hover:text-amber-400 transition-all disabled:opacity-50"
+          className="group relative flex flex-col items-center gap-3 px-6 py-3 bg-slate-800/50 hover:bg-slate-700 border border-slate-700 rounded-2xl text-slate-300 hover:text-amber-400 transition-all disabled:opacity-50"
         >
-          <span className={`text-2xl ${isGenerating ? 'animate-spin' : 'group-hover:rotate-12 transition-transform'}`}>
-            {isGenerating ? '⏳' : '🎨'}
-          </span>
-          <span className="font-bold text-sm">
-            {isGenerating ? 'جاري التوليد...' : 'توليد أيقونة اللعبة بالذكاء الاصطناعي'}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className={`text-2xl ${isGenerating ? 'animate-spin' : 'group-hover:rotate-12 transition-transform'}`}>
+              {isGenerating ? '⏳' : '🎨'}
+            </span>
+            <span className="font-bold text-sm">
+              {isGenerating ? 'جاري التوليد...' : 'توليد أيقونة مميزة بالذكاء الاصطناعي'}
+            </span>
+          </div>
+          {statusMessage && (
+            <span className="text-xs text-amber-500 font-black animate-pulse">{statusMessage}</span>
+          )}
         </button>
       </div>
 
